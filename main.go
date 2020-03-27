@@ -3,16 +3,17 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/hsiafan/glow/flagx"
+	"os"
+	"os/signal"
 	"runtime"
-	"time"
-
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"github.com/hsiafan/glow/flagx"
 	"github.com/hsiafan/vlog"
 )
 
@@ -38,7 +39,10 @@ func setDeviceFilter(handle *pcap.Handle, filterIP string, filterPort uint16) er
 		bpfFilter += " port " + strconv.Itoa(int(filterPort))
 	}
 	if filterIP != "" {
-		bpfFilter += " ip host " + filterIP
+		if bpfFilter != "" {
+			bpfFilter += " and "
+		}
+		bpfFilter += "ip host " + filterIP
 	}
 	return handle.SetBPFFilter(bpfFilter)
 }
@@ -156,6 +160,11 @@ func run(option *Option) error {
 	assembler.filterPort = uint16(option.Port)
 	var ticker = time.Tick(time.Second * 10)
 
+	if option.Cookie {
+		initCookieAnalytics()
+	}
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt)
 outer:
 	for {
 		select {
@@ -177,6 +186,16 @@ outer:
 		case <-ticker:
 			// flush connections that haven't been activity in the idle time
 			assembler.flushOlderThan(time.Now().Add(option.Idle))
+
+		case <-signalChan:
+			assembler.flushOlderThan(time.Now().Add(0))
+			fmt.Fprintf(os.Stderr, "\nCaught SIGINT: aborting\n\n")
+			if option.Cookie {
+				cookieAnalyticsReport()
+				cookieAnalyticsFinish()
+			}
+			//break outer
+			os.Exit(0)
 		}
 	}
 

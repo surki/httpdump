@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
@@ -12,12 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/gopacket/tcpassembly/tcpreader"
 	"github.com/hsiafan/glow/iox/filex"
 	"github.com/hsiafan/httpdump/httpport"
-
-	"bufio"
-
-	"github.com/google/gopacket/tcpassembly/tcpreader"
 )
 
 // ConnectionKey contains src and dst endpoint identify a connection
@@ -138,6 +136,9 @@ func (h *HTTPTrafficHandler) handle(connection *TCPConnection) {
 			h.endTime = connection.lastTimestamp
 			h.printResponse(req.RequestURI, resp)
 			h.printer.send(h.buffer.String())
+			if h.option.Cookie {
+				cookieAnalyticsHandler(req, resp)
+			}
 		} else {
 			discardAll(req.Body)
 			discardAll(resp.Body)

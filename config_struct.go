@@ -24,6 +24,7 @@ type Option struct {
 	DumpBody  bool          `description:"dump http request/response body to file"`
 	Output    string        `description:"Write result to file [output] instead of stdout"`
 	Idle      time.Duration `default:"4m" description:"Idle time to remove connection if no package received"`
+	Cookie    bool          `description:"Print cookie analytics"`
 }
 
 // parse int set
