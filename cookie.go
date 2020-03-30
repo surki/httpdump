@@ -23,10 +23,6 @@ var (
 	allCountMetrics *hdrhistogram.Histogram
 	allSizeMetrics  *hdrhistogram.Histogram
 	statsWg         sync.WaitGroup
-
-	digitRegex  *regexp.Regexp
-	nameRegex   *regexp.Regexp
-	beamerRegex *regexp.Regexp
 )
 
 type ck struct {
@@ -39,17 +35,68 @@ const (
 	statsCmdQuit   = iota
 )
 
-func init() {
-	allSizeMetrics = hdrhistogram.New(1, 4096*1024, 3)
-	allCountMetrics = hdrhistogram.New(1, 2000, 3)
+var (
+	digitRegex   *regexp.Regexp
+	digitRegex2  *regexp.Regexp
+	nameRegex    *regexp.Regexp
+	beamerRegex  *regexp.Regexp
+	intercomId   *regexp.Regexp
+	visitor      *regexp.Regexp
+	gac          *regexp.Regexp
+	mp           *regexp.Regexp
+	lc           *regexp.Regexp
+	exp          *regexp.Regexp
+	dc           *regexp.Regexp
+	uid          *regexp.Regexp
+	intercomSess *regexp.Regexp
+	amplitude    *regexp.Regexp
+)
 
-	digitRegex = regexp.MustCompile(`\.[0-9]+$`)
+func init() {
+	digitRegex = regexp.MustCompile(`([._-])[0-9]+$`)
 	nameRegex = regexp.MustCompile(`.*(_reload)$`)
 	beamerRegex = regexp.MustCompile(`^(_BEAMER_)([A-Z_]+)_.*?$`)
+	intercomId = regexp.MustCompile(`^(intercom-id-)[0-9a-zA-Z]*?$`)
+	visitor = regexp.MustCompile(`^(visitor)[0-9]*$`)
+
+	gac = regexp.MustCompile(`^(.*)(_UA)([_-]{1,})[0-9]+[_-]{1,}[0-9]+$`)
+	mp = regexp.MustCompile(`^(mp_)[a-z0-9]+(_mixpanel)$`)
+	lc = regexp.MustCompile(`^(lc_sso)([0-9]+)$`)
+	exp = regexp.MustCompile(`^(experiment_)[0-9a-zA-Z]+$`)
+	uid = regexp.MustCompile(`[0-9a-f]{8,}-[0-9a-f]{4,}-[0-9a-f]{4,}-[0-9a-f]{4,}-[0-9a-f]{12,}`)
+	intercomSess = regexp.MustCompile(`^(intercom-session-)[0-9a-zA-Z]*?$`)
+	amplitude = regexp.MustCompile(`^(amplitude_id_).*$`)
 }
 
-func initCookieAnalytics() {
+// Hack: Normalize cookie names that may vary by userid, name etc to keep
+// the cardinality low
+func normalizeCookieName(c string) string {
+	// TODO: Fold into one regex?
+
+	n := c
+	n = digitRegex.ReplaceAllString(c, "$1*")
+	n = nameRegex.ReplaceAllString(n, "*$1")
+	n = beamerRegex.ReplaceAllString(n, "$1$2*")
+	n = beamerRegex.ReplaceAllString(n, "$1$2*")
+	n = visitor.ReplaceAllString(n, "$1*")
+	n = intercomId.ReplaceAllString(n, "$1*")
+
+	n = gac.ReplaceAllString(n, "$1$2*")
+	n = mp.ReplaceAllString(n, "$1*$2")
+	n = lc.ReplaceAllString(n, "$1*")
+	n = exp.ReplaceAllString(n, "$1*")
+	n = uid.ReplaceAllString(n, "{UID}*")
+	n = intercomSess.ReplaceAllString(n, "$1*")
+	n = amplitude.ReplaceAllString(n, "$1*")
+
+	return n
+}
+
+func initCookieAnalytics(cookieDetailed bool) {
 	//t := time.NewTicker(5 * time.Minute)
+
+	allSizeMetrics = hdrhistogram.New(1, 4096*1024, 3)
+	allCountMetrics = hdrhistogram.New(1, 2000, 3)
 
 	statsWg.Add(1)
 	go func() {
@@ -59,8 +106,10 @@ func initCookieAnalytics() {
 			select {
 			case c := <-cookiesChan:
 				//fmt.Printf("Handling cookie: %v %v\n", c.req, c.resp)
-				processCookies(reqMetrics, c.req)
-				processCookies(respMetrics, c.resp)
+				if cookieDetailed {
+					processCookies(reqMetrics, c.req)
+					processCookies(respMetrics, c.resp)
+				}
 				processGlobal(c.req)
 
 			case c := <-statsCmd:
@@ -93,17 +142,6 @@ func cookieAnalyticsReport() {
 func cookieAnalyticsFinish() {
 	statsCmd <- statsCmdQuit
 	statsWg.Wait()
-}
-
-// Hack: Normalize cookie names that may vary by userid, name etc to keep
-// the cardinality low
-func normalizeCookieName(c string) string {
-	// TODO: Fold into one regex?
-	n := digitRegex.ReplaceAllString(c, ".*")
-	n = nameRegex.ReplaceAllString(n, "*$1")
-	n = beamerRegex.ReplaceAllString(n, "$1$2*")
-
-	return n
 }
 
 func processCookies(metrics map[string]*hdrhistogram.Histogram, cookies []*httpport.Cookie) {
@@ -300,12 +338,12 @@ func cookieStatsPrint() {
 	printStatsClientSide()
 	fmt.Printf("\n\n")
 
-	fmt.Println("Cookie count by host:")
+	fmt.Println("Cookie count by request:")
 	printStats(allCountMetrics)
 	printHistogram("Histogram of \"count\" distribution", allCountMetrics)
 	fmt.Printf("\n\n")
 
-	fmt.Println("Cookie size by host:")
+	fmt.Println("Cookie size by request:")
 	printStats(allSizeMetrics)
 	printHistogram("Histogram of \"size\" distribution", allSizeMetrics)
 	fmt.Printf("\n\n")

@@ -28,6 +28,7 @@ var printerWaitGroup sync.WaitGroup
 
 func listenOneSource(handle *pcap.Handle) chan gopacket.Packet {
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+	packetSource.NoCopy = true
 	packets := packetSource.Packets()
 	return packets
 }
@@ -161,7 +162,7 @@ func run(option *Option) error {
 	var ticker = time.Tick(time.Second * 10)
 
 	if option.Cookie {
-		initCookieAnalytics()
+		initCookieAnalytics(option.CookieDetailed)
 	}
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
@@ -201,6 +202,12 @@ outer:
 
 	assembler.finishAll()
 	waitGroup.Wait()
+
+	if option.Cookie {
+		cookieAnalyticsReport()
+		cookieAnalyticsFinish()
+	}
+
 	handler.printer.finish()
 	printerWaitGroup.Wait()
 	return nil

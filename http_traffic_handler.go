@@ -501,7 +501,8 @@ func (h *HTTPTrafficHandler) printNonTextTypeBody(reader io.Reader, contentType 
 }
 
 func discardAll(r io.Reader) (dicarded int) {
-	return tcpreader.DiscardBytesToEOF(r)
+	d, _ := tcpreader.DiscardBytesToFirstError(r)
+	return d
 }
 
 func uriToFileName(uri string, t time.Time) string {
