@@ -242,7 +242,7 @@ type NetworkStream struct {
 }
 
 func newNetworkStream() *NetworkStream {
-	return &NetworkStream{window: newReceiveWindow(64), c: make(chan *layers.TCP, 1024)}
+	return &NetworkStream{window: newReceiveWindow(64), c: make(chan *layers.TCP, 2048)}
 }
 
 func (stream *NetworkStream) appendPacket(tcp *layers.TCP) {
@@ -385,7 +385,11 @@ func (w *ReceiveWindow) confirm(ack uint32, c chan *layers.TCP) {
 				//TODO: we lose packet here
 			}
 		}
-		c <- packet
+		select {
+		case c <- packet:
+		default:
+			logger.Warn("Dropping packet, channel len=%v\n", len(c))
+		}
 		w.expectBegin = newExpect
 	}
 	w.start = (w.start + idx) % len(w.buffer)
