@@ -124,6 +124,11 @@ func initCookieAnalytics(cookieDetailed bool) {
 	}()
 }
 
+func cookieSize(c *httpport.Cookie) int {
+	// Size of "somename=somevalue"
+	return len(c.Name) + len(c.Value) + 1
+}
+
 func cookieAnalyticsHandler(req *httpport.Request, resp *httpport.Response) {
 	if len(req.Cookies()) == 0 && len(resp.Cookies()) == 0 {
 		return
@@ -151,14 +156,14 @@ func processCookies(metrics map[string]*hdrhistogram.Histogram, cookies []*httpp
 			metrics[n] = hdrhistogram.New(1, 4096*1024, 3)
 		}
 
-		metrics[n].RecordValue(int64(len(c.Value)))
+		metrics[n].RecordValue(int64(cookieSize(c)))
 	}
 }
 
 func processGlobal(cookies []*httpport.Cookie) {
 	size := 0
 	for _, c := range cookies {
-		size += len(c.Value)
+		size += cookieSize(c)
 	}
 	if size > 0 {
 		allSizeMetrics.RecordValue(int64(size))
